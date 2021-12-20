@@ -35,14 +35,14 @@ public class WebSocketDemo {
     //收到客户端信息
     @OnMessage
     public void onMessage(String message, Session session) {
-        logger.info("onMessage session=[{}] message=[{}]", session.getId(), message);
+        logger.info("onMessage session=[{}] userId=[{}] message=[{}]", session.getId(), getUserIdFromSessionId(session.getId()), message);
 
         handleMessage(message, session);
     }
 
     @OnClose
     public void onClose(Session session) {
-        logger.info("移除不用的session=[{}]", session.getId());
+        logger.info("移除不用的 session=[{}] userId=[{}]", getUserIdFromSessionId(session.getId()), session.getId());
 
         for (Map.Entry<String, Session> entry : sessionMap.entrySet()) {
             if (entry.getValue().getId().equals(session.getId())) {
@@ -60,7 +60,18 @@ public class WebSocketDemo {
     //错误时调用
     @OnError
     public void onError(Session session, Throwable throwable) {
-        logger.error("error", throwable);
+        logger.error("onError sessionId=[{}] userId=[{}]", session.getId(), getUserIdFromSessionId(session.getId()), throwable);
+    }
+
+    private String getUserIdFromSessionId(String sId) {
+        if (sId != null) {
+            for (Map.Entry<String, Session> entry : sessionMap.entrySet()) {
+                if (entry.getValue().getId().equals(sId)) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return null;
     }
 
     private void handleMessage(String message, Session session) {
@@ -68,7 +79,7 @@ public class WebSocketDemo {
         JSONObject jsonObject = JSONObject.parseObject(message);
         String receiver = jsonObject.getString("receiver");
 
-        if (receiver!=null){
+        if (receiver != null) {
             sendMessage(receiver, message);
         }
     }
