@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>webrtc_pc_share</title>
+    <meta name="viewport" content="height=device-height,width=device-width,initial-scale=1,maximum-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+    <style>
+        .video {
+            background-color: black;
+            height: 30vh;
+        }
+    </style>
+    <script src="adapter.js"></script>
+</head>
+<body>
+<div id="userId" style="text-align: center;font-size: 2rem;"></div>
+<div style="height: 1rem;"></div>
+<div style="text-align: center;">
+    ws_url:<input id="p2pUrl" value="ws://localhost:9210/demows/" style="width:20rem;">
+    <br>
+    <button onclick="startWebsocket()" id="startWebsocket">连接p2p服务器</button>
+</div>
+<div style="height: 1rem;"></div>
+<div style="text-align: center;">
+    对方id: <input id="toUserId" style="width:20rem;">
+    <div style="height: 2px;"></div>
+    <button id="startHandleBtn" onclick="startHandle()">step01准备peer</button>
+    <button id="callBtn" onclick="requestConnect()">step02建立连接</button>
+    <button id="hangupBtn" onclick="hangupHandle()" disabled="true">step03断开连接</button>
+</div>
+<div style="height: 1rem;"></div>
+<center>
+    <div>
+        我方视频<br>
+        <video id="localVideo" class="video" autoplay="autoplay"></video>
+        <div style="height: 1rem;"></div>
+        对方视频<br>
+        <video id="remoteVideo" class="video" autoplay="autoplay"></video>
+    </div>
+</center>
+</body>
+</html>
+<script>
+    const localVideo = document.querySelector('#localVideo');
+    const remoteVideo = document.querySelector('#remoteVideo');
+
+    const startWebsocketBtn = document.getElementById('startWebsocket');
+    const startHandleBtn = document.getElementById('startHandleBtn');
+    const callBtn = document.getElementById('callBtn');
+    const hangupBtn = document.getElementById('hangupBtn');
+
+    //RTCPeerConnection
+    let peerConnection;
+    let socket, userId, toUserId;
+    // 本地流和远端流
+    let localStream, remoteStream;
+
+    let inId;
+
+    const ice_config = {
+        iceTransportPolicy: "all",//all=[stun or turn] relay=turn
+        iceServers: [
+            {url: 'stun:47.113.5.72:3478'},
+            {
+                url: "turn:47.113.5.72:3478",
+                username: "fqfin_test",
+                credential: "123456",
+                credentialType: "password"
+            }
+        ],
+    };
+
+    window.onload = function () {
+        userId = parseInt(Math.random() * 10000);
+        while (userId < 1000) {
+            userId = parseInt(Math.random() * 10000);
+        }
+        //userId = "logan_pc";
+        document.getElementById('userId').innerText = '我的id:' + userId;
+
+        startWebsocket();
+    };
+
+    function startWebsocket() {
+        let p2pUrlTemp = document.getElementById('p2pUrl').value;
+        let webSocketUrl = p2pUrlTemp + userId;
+
+        if (socket) {
+            alert('socket already connected!');
+            return;
+        }
+
+        if ('WebSocket' in window) {
+            socket = new WebSocket(webSocketUrl);
+        } else if ('MozWebSocket' in window) {
+            socket = new MozWebSocket(webSocketUrl);
+        } else {
+            alert('不支持websocket');
+            return;
+        }
+
+        startWebsocketBtn.disabled = true;
+        socket.onmessage = onmessage;
+        //连接成功
+        socket.onopen = function (e) {
+            console.log('连接socket服务器 成功!');
+            inId = setInterval(function () {
+                sendMessageByWs(JSON.stringify({type: "keep_mark"}));
+            }, 50 * 1000);
+        };
+        //server端请求关闭
+        socket.onclose = function (e) {
+            console.log('socket close!', e);
+            socket = null;
+
+            clearInterval(inId);
+            startWebsocketBtn.disabled = false;
+        };
+        //error
+        socket.onerror = function (e) {
+            console.error('socket error!', e);
+            socket = null;
+
+            clearInterval(inId);
+            startWebsocketBtn.disabled = false;
+        };
+    }
+
+    function sendMessageByWs(message) {
+        if (socket) {
+            console.debug("send message=" + message);
+            socket.send(message);
+        }
+    }
+
+    function onmessage(e) {
+        if (e.data.indexOf("keep_mark") != -1) {
+            console.log("keep_mark");
+            return;
+        }
+
+        console.debug("receive message data=" + e.data);
+
+        const message = JSON.parse(e.data);
+
+        if ('sdp' === message.event) {
+            if ('offer' == message.type.toLowerCase()) {
+                console.log('receive offer data=' + e.data);
+
+                toUserId = message.sender;
+                document.getElementById("toUserId").value = toUserId;
+
+                peerConnection.setRemoteDescription(new RTCSessionDescription({type: 'offer', sdp: message.description}))
+                    .then(() => {
+                        console.log('set remote offer ok');
+                    })
+                    .catch((err) => {
+                        console.log('set remote offer error', err);
+                    });
+
+                peerConnection.createAnswer()
+                    .then(function (answer) {
+                        peerConnection.setLocalDescription(answer)
+                            .then(() => {
+                                console.log('set local answer ok answer=' + JSON.stringify(answer));
+                            })
+                            .catch((err) => {
+                                console.error('设置本地answer失败', err);
+                            });
+
+                        sendMessageByWs(JSON.stringify({
+                            "event": "sdp",
+                            "type": 'answer',
+                            "description": answer.sdp,
+                            "sender": userId,
+                            "receiver": toUserId
+                        }));
+                    })
+                    .catch(e => {
+                        console.error(e)
+                    });
+            } else if ('answer' == message.type.toLowerCase()) {
+                // 收到 answer
+                console.log('receive answer from=' + message.sender);
+
+                peerConnection.setRemoteDescription(new RTCSessionDescription({type: 'answer', sdp: message.description}))
+                    .then(() => {
+                        console.log('set remote answer ok');
+                    })
+                    .catch((err) => {
+                        console.log('set remote answer error', err);
+                    });
+            }
+        } else if ('trickle' === message.event) {
+            let candidateTemp = {
+                sdpMid: message.candidate.sdpMid,
+                sdpMLineIndex: message.candidate.sdpMLineIndex,
+                candidate: message.candidate.sdp
+            };
+
+            console.log('receive candidate=' + JSON.stringify(candidateTemp));
+
+            // 创建 RTCIceCandidate 对象
+            let newIceCandidate = new RTCIceCandidate(candidateTemp);
+
+            // 将本地获得的 Candidate 添加到远端的 RTCPeerConnection 对象中
+            peerConnection.addIceCandidate(newIceCandidate)
+                .then(() => {
+                    console.log(`add candidate ok`);
+                })
+                .catch((error) => {
+                    console.log(`add candidateerr`, error);
+                });
+        }
+    }
+
+    async function startHandle() {
+        // 1.获取本地音视频流
+        let constraints = {
+            video: true,
+            audio: {
+                noiseSuppression: true,// 设置回音消除
+                echoCancellation: true,// 设置降噪
+            }
+        };
+        // getDisplayMedia 获取屏幕共享
+        // getUserMedia 获取摄像头+麦克风
+        await navigator.mediaDevices.getDisplayMedia(constraints)
+            .then(mediaStream => {
+                // getUserMedia 获得流后，将音视频流展示并保存到 localStream
+                localVideo.srcObject = mediaStream;
+                localStream = mediaStream;
+                callBtn.disabled = false;
+            })
+            .catch((err) => {
+                console.log('getUserMedia 错误', err);
+            });
+
+        peerConnection = new RTCPeerConnection(ice_config);
+        startHandleBtn.disabled = true;
+
+        if (localStream) {
+            // 视频轨道
+            const videoTracks = localStream.getVideoTracks();
+            // 音频轨道
+            const audioTracks = localStream.getAudioTracks();
+            // 判断视频轨道是否有值
+            if (videoTracks.length > 0) {
+                console.log(`使用的设备为: ${videoTracks[0].label}.`);
+            }
+            // 判断音频轨道是否有值
+            if (audioTracks.length > 0) {
+                console.log(`使用的设备为: ${audioTracks[0].label}.`);
+            }
+
+            localStream.getTracks().forEach((track) => {
+                peerConnection.addTrack(track, localStream);
+            })
+        }
+
+        // 监听返回的 Candidate
+        peerConnection.addEventListener('icecandidate', handleIceConnection);
+        // 监听 ICE 状态变化
+        peerConnection.addEventListener('iceconnectionstatechange', handleConnectionChange);
+        //拿到流的时候调用
+        peerConnection.addEventListener('track', gotRemoteMediaStream);
+    }
+
+    function requestConnect() {
+        toUserId = document.getElementById('toUserId').value;
+        if (!toUserId) {
+            alert('请输入对方id');
+            return false;
+        }
+        if (!socket) {
+            alert('请先打开websocket');
+            return false;
+        }
+        if (toUserId == userId) {
+            alert('自己不能和自己连接');
+            return false;
+        }
+        if (!peerConnection) {
+            alert('请准备peer');
+            return false;
+        }
+
+        console.log('start 1');
+
+        callBtn.disabled = true;
+        hangupBtn.disabled = false;
+
+        // 创建offer
+        peerConnection.createOffer()
+            .then(description => {
+                console.info('start 2 create offer ok description=' + JSON.stringify(description));
+
+                // 将offer保存到本地
+                peerConnection.setLocalDescription(description).then(() => {
+                    console.log('start 3 set offer to local ok');
+
+                    //将它发送给远端
+                    sendMessageByWs(JSON.stringify({
+                        "event": "sdp",
+                        "type": 'offer',
+                        "description": description.sdp,
+                        "sender": userId,
+                        "receiver": toUserId
+                    }));
+                    console.log('start 4 send offer to=' + toUserId);
+                }).catch((err) => {
+                    console.log('local offer set error', err);
+                });
+            }).catch((err) => {
+            console.log('created offer 错误', err);
+        });
+    }
+
+    function hangupHandle() {
+        // 关闭连接并设置为空
+        peerConnection.close();
+        peerConnection = null;
+
+        hangupBtn.disabled = true;
+        callBtn.disabled = false;
+
+        localStream.getTracks().forEach((track) => {
+            track.stop()
+        });
+    }
+
+    // 3.端与端建立连接
+    function handleIceConnection(event) {
+        console.log("candidate from stun 1");
+
+        const candidate = event.candidate;
+        if (candidate) {
+            console.debug(JSON.stringify(event.candidate));
+
+            const trickle = {
+                event: 'trickle',
+                sender: userId,
+                receiver: toUserId,
+                candidate: {
+                    sdpMid: candidate.sdpMid,
+                    sdpMLineIndex: candidate.sdpMLineIndex,
+                    sdp: candidate.candidate
+                }
+            };
+
+            sendMessageByWs(JSON.stringify(trickle));
+            console.log("candidate from stun 2 send to=" + toUserId);
+        } else {
+            console.log("candidate from stun 3");
+        }
+    }
+
+    // 4.显示远端媒体流
+    function gotRemoteMediaStream(event) {
+        if (event.streams[0]) {
+            console.debug('gotRemoteMediaStream 0 开始接受远端流', event.streams[0]);
+            console.log('gotRemoteMediaStream 1 开始接受远端流');
+            remoteVideo.srcObject = event.streams[0];
+            remoteStream = event.streams[0];
+        } else {
+            console.log('gotRemoteMediaStream 2 开始接受远端流');
+        }
+    }
+
+    function handleConnectionChange(event) {
+        const peerConnection = event.target;
+        console.debug('handleConnectionChange ICE state change event: ', event);
+        console.log(`handleConnectionChange ICE state: ` + `${peerConnection.iceConnectionState}.`);
+    }
+</script>

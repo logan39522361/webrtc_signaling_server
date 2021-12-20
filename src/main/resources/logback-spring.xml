@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF8"?>
+
+<configuration>
+    <!-- 1. 属性配置 -->
+    <springProperty scope="context" name="kafka.address" source="logback.kafka.broker.address"/>
+    <springProperty scope="context" name="logback.log.path" source="logback.log.path.address"/>
+    <!-- 日志文件存储位置 -->
+    <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>[%date{yyyy-MM-dd HH:mm:ss.SSS}][%level][%thread][%logger|%method|%line][%X{flowId}]%msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="file.info" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <File>/app/logs/ss_info.log</File>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <FileNamePattern>/app/logs/bak_ss_info_%d{yyyy-MM-dd}.%i.zip</FileNamePattern>
+            <MaxHistory>14</MaxHistory>
+            <MaxFileSize>500MB</MaxFileSize>
+        </rollingPolicy>
+        <encoder>
+            <pattern>[%date{yyyy-MM-dd HH:mm:ss.SSS}][%level][%thread][%logger|%method|%line][%X{flowId}]%msg%n</pattern>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+    </appender>
+
+    <appender name="file.error" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <File>/app/logs/ss_error.log</File>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <FileNamePattern>/app/logs/bak_ss_error_%d{yyyy-MM-dd}.%i.zip</FileNamePattern>
+            <MaxHistory>14</MaxHistory>
+            <MaxFileSize>500MB</MaxFileSize>
+        </rollingPolicy>
+        <encoder>
+            <pattern>[%date{yyyy-MM-dd HH:mm:ss.SSS}][%level][%thread][%logger|%method|%line][%X{flowId}]%msg%n</pattern>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+    </appender>
+
+    <appender name="file.info.async" class="ch.qos.logback.classic.AsyncAppender">
+        <discardingThreshold>0</discardingThreshold>
+        <queueSize>10000</queueSize>
+        <includeCallerData>true</includeCallerData>
+        <appender-ref ref="file.info"/>
+        <neverBlock>true</neverBlock>
+    </appender>
+    <appender name="file.error.async" class="ch.qos.logback.classic.AsyncAppender">
+        <discardingThreshold>0</discardingThreshold>
+        <queueSize>1000</queueSize>
+        <includeCallerData>true</includeCallerData>
+        <appender-ref ref="file.error"/>
+        <neverBlock>true</neverBlock>
+    </appender>
+
+    <!-- 当前项目的包路径 -->
+    <logger name="com.kiddo" level="INFO" additivity="false">
+        <appender-ref ref="stdout"/>
+        <appender-ref ref="file.info.async"/>
+        <appender-ref ref="file.error.async"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="stdout"/>
+        <appender-ref ref="file.info.async"/>
+        <appender-ref ref="file.error.async"/>
+    </root>
+
+</configuration>
