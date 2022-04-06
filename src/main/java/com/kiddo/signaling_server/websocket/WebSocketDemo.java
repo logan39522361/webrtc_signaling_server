@@ -1,6 +1,7 @@
 package com.kiddo.signaling_server.websocket;
 
 import com.alibaba.fastjson.JSONObject;
+import com.kiddo.signaling_server.utils.TurnPassWordUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,6 +31,19 @@ public class WebSocketDemo {
         logger.info("链接用户 id=[{}]", id);
 
         sessionMap.put(id, session);
+    }
+
+    /**
+     * 临时账号密码
+     */
+    public void getTurnInfo() {
+        //过期时间120s
+        String turnUsername = System.currentTimeMillis() / 1000 + 120 + ":user";
+        JSONObject parms = new JSONObject();
+        //parms.put(STUN_URL, stunUrl);
+        //parms.put(TURN_URL, turnUrl);
+        parms.put("turnUsername", turnUsername);
+        parms.put("turnPassword", TurnPassWordUtil.getPassWord(turnUsername));
     }
 
     //收到客户端信息

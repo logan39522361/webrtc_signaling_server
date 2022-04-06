@@ -1,0 +1,33 @@
+------
+turnserver -o -a -f -v -r shenzhen  -c /usr/local/etc/turnserver.conf
+------
+listening-port=3478
+listening-ip=【centos服务器局域网ip】
+tls-listening-port=5349
+external-ip=【外部公网ip】
+
+lt-cred-mech
+use-auth-secret
+static-auth-secret=northnorth
+
+realm=shenzhen
+
+log-file=/app/logs/turn.log
+pidfile=/app/logs/pid_turnserver
+
+
+
+------
+turnserver -o -a -f -v -r shenzhen -user=admin:123456 -c /usr/local/etc/turnserver.conf
+------
+listening-port=3478
+listening-ip=10.100.0.10
+listening-device=eth0
+tls-listening-port=5349
+external-ip=47.113.5.72
+
+user=fqfin_test:123456
+cli-password=123456
+
+log-file=/app/logs/turn.log
+pidfile=/app/logs/pid_turnserver
